@@ -1,269 +1,239 @@
-// ============================================
-// SAFE STORAGE - برای جلوگیری از localStorage errors
-// ============================================
+(function() {
+  // ============================================
+  // TAB SWITCHING
+  // ============================================
 
-function isLocalStorageAvailable() {
-  try {
-    const test = '__localStorage_test__';
-    localStorage.setItem(test, test);
-    localStorage.removeItem(test);
-    return true;
-  } catch(e) {
-    console.warn('localStorage is not available');
-    return false;
+  const tabs = document.querySelectorAll('.auth-tab');
+  const loginForm = document.getElementById('login-form');
+  const registerForm = document.getElementById('register-form');
+
+  tabs.forEach(tab => {
+    tab.addEventListener('click', () => {
+      // حذف active class از همه tabs
+      tabs.forEach(t => t.classList.remove('active'));
+      tab.classList.add('active');
+
+      // نمایش/پنهان کردن forms
+      if (tab.dataset.tab === 'login') {
+        loginForm.style.display = 'block';
+        registerForm.style.display = 'none';
+      } else {
+        loginForm.style.display = 'none';
+        registerForm.style.display = 'block';
+      }
+    });
+  });
+
+  // ============================================
+  // UTILITY FUNCTIONS
+  // ============================================
+
+  function getRedirect() {
+    const params = new URLSearchParams(window.location.search);
+    return params.get('redirect') || 'dashboard.html';
   }
-}
 
-function safeGetItem(key) {
-  try {
-    if (isLocalStorageAvailable()) {
-      return localStorage.getItem(key);
+  function getRefCode() {
+    const params = new URLSearchParams(window.location.search);
+    return params.get('ref') || null;
+  }
+
+  // ============================================
+  // LOGIN FORM
+  // ============================================
+
+  loginForm.addEventListener('submit', (e) => {
+    e.preventDefault();
+
+    const identifier = document.getElementById('login-identifier').value.trim();
+    const password = document.getElementById('login-password').value.trim();
+
+    // Validation
+    if (!identifier || !password) {
+      showToast('لطفا همه فیلدها را پر کنید', 'error');
+      return;
     }
-  } catch(e) {
-    console.error('Error reading from localStorage:', e);
-  }
-  return null;
-}
 
-function safeSetItem(key, value) {
-  try {
-    if (isLocalStorageAvailable()) {
-      localStorage.setItem(key, value);
-      return true;
+    // Check if it's phone or email
+    const isPhone = validatePhone(identifier);
+    const isEmail = validateEmail(identifier);
+
+    if (!isPhone && !isEmail) {
+      showToast('شماره موبایل یا ایمیل معتبر نیست', 'error');
+      return;
     }
-  } catch(e) {
-    console.error('Error writing to localStorage:', e);
-  }
-  return false;
-}
 
-function safeRemoveItem(key) {
-  try {
-    if (isLocalStorageAvailable()) {
-      localStorage.removeItem(key);
-      return true;
+    if (!validatePassword(password)) {
+      showToast('رمز عبور حداقل 6 کاراکتر باید باشد', 'error');
+      return;
     }
-  } catch(e) {
-    console.error('Error removing from localStorage:', e);
-  }
-  return false;
-}
 
-// ============================================
-// FORMATTING FUNCTIONS
-// ============================================
+    // محاکاتی برای لاگین
+    const user = {
+      id: 'user_' + Date.now(),
+      name: 'کاربر',
+      phone: isPhone ? identifier : '',
+      email: isEmail ? identifier : '',
+      loggedInAt: new Date().toISOString()
+    };
 
-function formatPrice(price) {
-  if (price === 0) return '۰';
-  return price.toLocaleString('fa-IR');
-}
+    // ذخیره‌سازی امن
+    if (setCurrentUser(user)) {
+      showToast('ورود موفقیت‌آمیز بود');
 
-function formatNumber(num) {
-  return num.toLocaleString('fa-IR');
-}
-
-// ============================================
-// TOAST NOTIFICATIONS
-// ============================================
-
-function showToast(message, type = 'success') {
-  let container = document.querySelector('.toast-container');
-  if (!container) {
-    container = document.createElement('div');
-    container.className = 'toast-container';
-    document.body.appendChild(container);
-  }
-
-  const toast = document.createElement('div');
-  toast.className = `toast ${type}`;
-  toast.textContent = message;
-  container.appendChild(toast);
-
-  setTimeout(() => toast.classList.add('show'), 10);
-  setTimeout(() => {
-    toast.classList.remove('show');
-    setTimeout(() => toast.remove(), 300);
-  }, 3000);
-}
-
-// ============================================
-// CLIPBOARD OPERATIONS
-// ============================================
-
-async function copyToClipboard(text) {
-  try {
-    // Modern API
-    if (navigator.clipboard && navigator.clipboard.writeText) {
-      await navigator.clipboard.writeText(text);
-      return true;
-    }
-  } catch (err) {
-    console.warn('Clipboard API failed:', err);
-  }
-
-  // Fallback for older browsers
-  return new Promise((resolve) => {
-    const textarea = document.createElement('textarea');
-    textarea.value = text;
-    textarea.style.position = 'fixed';
-    textarea.style.opacity = '0';
-    textarea.style.pointerEvents = 'none';
-    document.body.appendChild(textarea);
-
-    try {
-      textarea.select();
-      const successful = document.execCommand('copy');
-      resolve(successful);
-    } catch (err) {
-      console.error('Fallback copy failed:', err);
-      resolve(false);
-    } finally {
-      document.body.removeChild(textarea);
+      setTimeout(() => {
+        window.location.href = getRedirect();
+      }, 800);
+    } else {
+      showToast('خطایی در ورود رخ داد', 'error');
     }
   });
-}
 
-// ============================================
-// USER MANAGEMENT
-// ============================================
+  // ============================================
+  // REGISTER FORM
+  // ============================================
 
-function getCurrentUser() {
-  const user = safeGetItem('currentUser');
-  try {
-    return user ? JSON.parse(user) : null;
-  } catch (e) {
-    console.error('Error parsing user data:', e);
-    return null;
-  }
-}
+  registerForm.addEventListener('submit', (e) => {
+    e.preventDefault();
 
-function setCurrentUser(user) {
-  try {
-    const userData = JSON.stringify(user);
-    return safeSetItem('currentUser', userData);
-  } catch (e) {
-    console.error('Error saving user data:', e);
-    return false;
-  }
-}
+    const name = document.getElementById('reg-name').value.trim();
+    const mobile = document.getElementById('reg-mobile').value.trim();
+    const email = document.getElementById('reg-email').value.trim();
+    const password = document.getElementById('reg-password').value.trim();
+    const refInput = document.getElementById('reg-ref').value.trim();
 
-function logoutUser() {
-  safeRemoveItem('currentUser');
-  safeRemoveItem('refCode');
-  safeRemoveItem('referrerCode');
-}
+    // ============================================
+    // VALIDATION CHECKS
+    // ============================================
 
-// ============================================
-// REFERRAL CODE GENERATION
-// ============================================
+    // بررسی فیلدهای الزامی
+    if (!name || !mobile || !password) {
+      showToast('لطفا فیلدهای الزامی (نام، موبایل، رمز عبور) را پر کنید', 'error');
+      return;
+    }
 
-function generateReferralCode(length = 6) {
-  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-  let code = '';
-  for (let i = 0; i < length; i++) {
-    code += chars.charAt(Math.floor(Math.random() * chars.length));
-  }
-  return code;
-}
+    // بررسی نام
+    if (!validateName(name)) {
+      showToast('نام حداقل 3 کاراکتر باید باشد', 'error');
+      return;
+    }
 
-// ============================================
-// URL BUILDING
-// ============================================
+    // بررسی موبایل
+    if (!validatePhone(mobile)) {
+      showToast('شماره موبایل معتبر نیست. مثال: 09xxxxxxxxx', 'error');
+      return;
+    }
 
-function buildPackageUrl(packageId, refCode = '') {
-  try {
-    // استفاده از location.origin و pathname برای دقت بیشتر
-    const origin = window.location.origin;
-    const pathname = window.location.pathname;
+    // بررسی ایمیل (اختیاری)
+    if (email && !validateEmail(email)) {
+      showToast('ایمیل معتبر نیست', 'error');
+      return;
+    }
 
-    // حذف نام فایل از آخر
-    const pathWithoutFile = pathname.substring(0,
-      pathname.lastIndexOf('/') + 1);
+    // بررسی رمز عبور
+    if (!validatePassword(password)) {
+      showToast('رمز عبور حداقل 6 کاراکتر باید باشد', 'error');
+      return;
+    }
 
-    let url = `${origin}${pathWithoutFile}package.html?id=${encodeURIComponent(packageId)}`;
+    // ============================================
+    // CREATE USER OBJECT
+    // ============================================
+
+    const user = {
+      id: 'user_' + Date.now(),
+      name,
+      phone: mobile,
+      email: email || null,
+      referralCode: refInput || null,
+      createdAt: new Date().toISOString()
+    };
+
+    // ============================================
+    // REFERRAL CODE HANDLING
+    // ============================================
+
+    const refCode = getRefCode(); // کد معرف از URL
+    const refNote = document.getElementById('ref-note');
 
     if (refCode) {
-      url += '&ref=' + encodeURIComponent(refCode);
+      // کد معرف از URL
+      user.referredBy = refCode;
+      if (refNote) {
+        refNote.textContent = `ثبت‌نام شما با کد معرف ${refCode} ثبت شد. از این بابت سپاسگزاریم!`;
+        refNote.style.display = 'block';
+        refNote.style.color = 'var(--success)';
+      }
+      showToast('ثبت‌نام با کد معرف موفقیت‌آمیز بود', 'success');
+    } else if (refInput) {
+      // کد معرف دستی
+      if (refNote) {
+        refNote.textContent = `درخواست ثبت‌نام با کد معرف ${refInput} ثبت شد.`;
+        refNote.style.display = 'block';
+        refNote.style.color = 'var(--warning)';
+      }
+      showToast('ثبت‌نام موفقیت‌آمیز بود');
+    } else {
+      showToast('ثبت‌نام موفقیت‌آمیز بود');
     }
 
-    return url;
-  } catch (e) {
-    console.error('Error building package URL:', e);
-    return '#error';
-  }
-}
+    // ============================================
+    // SAVE USER DATA
+    // ============================================
 
-// ============================================
-// VALIDATION FUNCTIONS
-// ============================================
+    if (setCurrentUser(user)) {
+      // پاک کردن فرم
+      registerForm.reset();
+      if (refNote) refNote.style.display = 'none';
 
-function validatePhone(phone) {
-  // فرمت معتبر: 09xxxxxxxxx یا +989xxxxxxxxx
-  const patterns = [
-    /^09\d{9}$/, // 09xxxxxxxxx
-    /^\+989\d{9}$/, // +989xxxxxxxxx
-  ];
-  return patterns.some(p => p.test(phone.trim()));
-}
-
-function validateEmail(email) {
-  const pattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-  return pattern.test(email.trim());
-}
-
-function validatePassword(password) {
-  return password.length >= 6; // حداقل 6 کاراکتر
-}
-
-function validateName(name) {
-  return name.trim().length >= 3; // حداقل 3 کاراکتر
-}
-
-// ============================================
-// GLOBAL ERROR HANDLER
-// ============================================
-
-window.addEventListener('error', (event) => {
-  console.error('Uncaught Error:', event.error);
-  // فقط برای errors خطرناک
-  if (event.error && event.error.message &&
-      event.error.message.includes('localStorage')) {
-    showToast('مشکلی در ذخیره‌سازی رخ داد', 'error');
-  }
-});
-
-window.addEventListener('unhandledrejection', (event) => {
-  console.error('Unhandled Promise Rejection:', event.reason);
-  showToast('خطایی رخ داد. لطفا دوباره سعی کنید', 'error');
-});
-
-// ============================================
-// UTILITY HELPERS
-// ============================================
-
-function debounce(func, wait) {
-  let timeout;
-  return function executedFunction(...args) {
-    const later = () => {
-      clearTimeout(timeout);
-      func(...args);
-    };
-    clearTimeout(timeout);
-    timeout = setTimeout(later, wait);
-  };
-}
-
-function throttle(func, limit) {
-  let inThrottle;
-  return function(...args) {
-    if (!inThrottle) {
-      func.apply(this, args);
-      inThrottle = true;
-      setTimeout(() => inThrottle = false, limit);
+      setTimeout(() => {
+        window.location.href = getRedirect();
+      }, 1200);
+    } else {
+      showToast('خطایی در ثبت‌نام رخ داد. لطفا دوباره سعی کنید', 'error');
     }
-  };
-}
+  });
 
-function isMobileDevice() {
-  return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-}
+  // ============================================
+  // REFERRAL CODE INPUT HANDLER
+  // ============================================
+
+  const refInput = document.getElementById('reg-ref');
+  if (refInput) {
+    refInput.addEventListener('input', (e) => {
+      // فقط حروف بزرگ و اعداد
+      e.target.value = e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '');
+    });
+
+    // اگر کد معرف از URL موجود بود، آن را نمایش دهید
+    const urlRef = getRefCode();
+    if (urlRef) {
+      refInput.value = urlRef;
+      refInput.disabled = true;
+      const refNote = document.getElementById('ref-note');
+      if (refNote) {
+        refNote.textContent = `کد معرف: ${urlRef}`;
+        refNote.style.display = 'block';
+      }
+    }
+  }
+
+  // ============================================
+  // FORM FOCUS HANDLERS
+  // ============================================
+
+  // Focus/Blur effects برای UX بهتر
+  const inputs = document.querySelectorAll('.form-control');
+  inputs.forEach(input => {
+    input.addEventListener('focus', function() {
+      this.parentElement.style.opacity = '1';
+    });
+
+    input.addEventListener('blur', function() {
+      if (!this.value) {
+        this.parentElement.style.opacity = '0.8';
+      }
+    });
+  });
+
+})();
